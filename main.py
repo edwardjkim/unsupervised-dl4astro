@@ -1,31 +1,39 @@
-import os
-import sys
-from astropy.io import fits
-from pixelsg.patch import extract_patches
+#!/usr/bin/env python3
+import argparse
 from pixelsg.train import train_cnn
 
 
 def main(args=None):
 
-    train_cnn(num_epochs=2000)
+    train_cnn(
+        filenames=args.files,
+        num_epochs=args.num_epochs,
+        num_classes=args.num_classes
+    )
 
 
 if __name__ == '__main__':
 
-    if ('--help' in sys.argv) or ('-h' in sys.argv):
-        print("Trains a neural network on MNIST using Lasagne.")
-        print("Usage: %s [MODEL [EPOCHS]]" % sys.argv[0])
-        print()
-        print("MODEL: 'mlp' for a simple Multi-Layer Perceptron (MLP),")
-        print("       'custom_mlp:DEPTH,WIDTH,DROP_IN,DROP_HID' for an MLP")
-        print("       with DEPTH hidden layers of WIDTH units, DROP_IN")
-        print("       input dropout and DROP_HID hidden dropout,")
-        print("       'cnn' for a simple Convolutional Neural Network (CNN).")
-        print("EPOCHS: number of training epochs to perform (default: 500)")
-    else:
-        kwargs = {}
-        if len(sys.argv) > 1:
-            kwargs['model'] = sys.argv[1]
-        if len(sys.argv) > 2:
-            kwargs['num_epochs'] = int(sys.argv[2])
-        main(**kwargs)
+    parser = argparse.ArgumentParser(
+        description="Trains an unsupervised convolutional neural network on "
+            "FITS images."
+    )
+
+    parser.add_argument(
+        "files", metavar="FILES", type=str, nargs='+',
+        help="file names"
+    )
+
+    parser.add_argument(
+        "--num_epochs", type=int, default=500,
+        help="Number of training epochs to perform (default: 500)"
+    )
+
+    parser.add_argument(
+        "--num_classes", type=int, default=1000,
+        help="Number of surrogate classes (default: 1000)"
+    )
+
+    args = parser.parse_args()
+
+    main(args)

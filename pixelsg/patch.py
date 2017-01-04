@@ -78,13 +78,17 @@ def augment(array):
     return array
 
 
-def extract_patches(array, size, n_patches, sigma=1.0, n_channels=1):
+def extract_patches(array, size, n_patches, sigma=1.0, reference=None):
     """
     """
 
+    if reference is None:
+        reference = array.shape[0] // 2
+
+    n_channels, _, _ = array.shape
     X = np.zeros((n_patches, n_channels, size, size))
 
-    sog = squares_of_gradient(array, size, sigma=sigma)
+    sog = squares_of_gradient(array[reference], size, sigma=sigma)
 
     sog = sog / np.sum(sog)
 
@@ -102,8 +106,9 @@ def extract_patches(array, size, n_patches, sigma=1.0, n_channels=1):
         icol = col[i]
         irow = row[i]
         for j in range(n_channels):
-            X[i, j] = array[irow: irow + size, icol: icol + size]
+            X[i, j] = array[j, irow: irow + size, icol: icol + size]
 
+    X = X.astype(np.float32)
     y = np.arange(n_patches).astype(np.int32)
 
     return X, y

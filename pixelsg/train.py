@@ -15,9 +15,9 @@ from astropy.io import fits
 from .patch import extract_patches, augment
 
 
-def build_cnn(input_var, num_outputs):
+def build_cnn(input_var, num_outputs, num_channels=3):
 
-    network = InputLayer(shape=(None, 1, 17, 17), input_var=input_var)
+    network = InputLayer(shape=(None, num_channels, 17, 17), input_var=input_var)
 
     network = batch_norm(Conv2DLayer(
         dropout(network, p=0.1),
@@ -73,15 +73,19 @@ def normalize(x):
     return result
 
 
-def train_cnn(num_epochs=500):
+def train_cnn(filenames, num_epochs=500, num_classes=1000):
 
     print("Loading data...")
 
-    n_classes = 1000
+    image_data = []
+    for f in filenames:
+        image_data.append(fits.getdata(f))
+    image_data = np.stack(image_data)
+        
+    X_train, y_train = extract_patches(image_data, 17, num_classes)
 
-    image_data = fits.getdata('/home/jovyan/work/shared/image-cutout/frame-r-000109-2-0037.fits')
-    X_train, y_train = extract_patches(image_data, 17, n_classes)
-    X_train = normalize(X_train)
+    for i in range(X_train.shape[1]):
+        X_train[:, i, :, :] = normalize(X_train[:, i, :, :])
 
     print("shape: {}, min: {}, max: {}".format(X_train.shape, X_train.min(), X_train.max()))
 
@@ -90,7 +94,7 @@ def train_cnn(num_epochs=500):
     input_var = T.tensor4('inputs')
     target_var = T.ivector('targets')
 
-    network = build_cnn(input_var, n_classes)
+    network = build_cnn(input_var, num_classes)
 
     prediction = lasagne.layers.get_output(network)
     loss = lasagne.objectives.categorical_crossentropy(prediction, target_var)
@@ -105,7 +109,7 @@ def train_cnn(num_epochs=500):
     )
 
     def single_output(input_var):
-        net = build_cnn(input_var, n_classes)
+        net = build_cnn(input_var, num_classes)
         result = lasagne.layers.get_output(net)
         return result
 
@@ -114,7 +118,7 @@ def train_cnn(num_epochs=500):
     # https://arxiv.org/abs/1506.02158
     scan_results, scan_updates = theano.scan(
         fn=lambda inputs_var: lasagne.layers.get_output(
-            build_cnn(input_var, n_classes)
+            build_cnn(input_var, num_classes)
         ),
         n_steps=10,
         non_sequences=[input_var]
@@ -174,7 +178,3 @@ def train_cnn(num_epochs=500):
             val_acc / val_batches * 100))
 
     return network
-
-if __name__ == "__main__":
-
-    _ = train_cnn(num_epochs=2000)
