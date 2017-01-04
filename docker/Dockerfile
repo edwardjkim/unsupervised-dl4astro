@@ -36,5 +36,6 @@ RUN \
     pip3 install --upgrade pip && \
     pip3 install montage-wrapper && \
 
-    pip3 install Theano Lasagne && \
+    pip3 install git+https://github.com/Theano/Theano.git#egg=Theano && \
+    pip3 install https://github.com/Lasagne/Lasagne/archive/master.zip && \
     pip3 install git+https://github.com/dnouri/nolearn.git@master#egg=nolearn==0.7.git
