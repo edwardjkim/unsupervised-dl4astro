@@ -78,23 +78,49 @@ def augment(array):
     return array
 
 
-def extract_patches(array, size, n_patches, sigma=1.0, reference=None):
+def nanomaggie_to_luptitude(array, band):
+    """
+    Converts nanomaggies (flux) to luptitudes (magnitude).
+    http://www.sdss.org/dr12/algorithms/magnitudes/#asinh
+    http://arxiv.org/abs/astro-ph/9903081
+    """
+    b = {
+        'u': 1.4e-10,
+        'g': 0.9e-10,
+        'r': 1.2e-10,
+        'i': 1.8e-10,
+        'z': 7.4e-10
+    }
+    nanomaggie = array * 1.0e-9 # fluxes are in nanomaggies
+
+    luptitude = -2.5 / np.log(10) * (np.arcsinh((nanomaggie / (2 * b[band]))) + np.log(b[band]))
+    
+    return luptitude
+
+
+def extract_patches(array, size, num_patches, sigma=1.0, reference=None):
     """
     """
+
+    nchannels, nrows, ncols = array.shape
 
     if reference is None:
-        reference = array.shape[0] // 2
+        reference = nchannels // 2
 
-    n_channels, _, _ = array.shape
-    X = np.zeros((n_patches, n_channels, size, size))
+    X = np.zeros((num_patches, nchannels, size, size))
 
     sog = squares_of_gradient(array[reference], size, sigma=sigma)
 
     sog = sog / np.sum(sog)
 
+    # aligning images can produce NaN values in some pixels.
+    # we will draw 10% more patches than specified and
+    # skip images with any NaN values.
+    nbuffer = int(0.1 * num_patches)
+
     pos = np.random.choice(
         np.arange(sog.size),
-        size=n_patches,
+        size=num_patches + nbuffer,
         p=sog.reshape((sog.size, )),
         replace=False
     )
@@ -102,13 +128,19 @@ def extract_patches(array, size, n_patches, sigma=1.0, reference=None):
     row = pos // sog.shape[1]
     col = pos % sog.shape[1]
 
-    for i in range(n_patches):
+    for i in range(num_patches):
         icol = col[i]
         irow = row[i]
-        for j in range(n_channels):
-            X[i, j] = array[j, irow: irow + size, icol: icol + size]
+        patch = array[:, irow: irow + size, icol: icol + size]
+
+        # as mentioned previously, some aligned images may have NaN values.
+        # if there are any NaN values, continue.
+        if np.sum(np.isnan(patch)) > 0:
+            continue
+        else:
+            X[i] = patch
 
     X = X.astype(np.float32)
-    y = np.arange(n_patches).astype(np.int32)
+    y = np.arange(num_patches).astype(np.int32)
 
     return X, y

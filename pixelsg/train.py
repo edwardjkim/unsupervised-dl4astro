@@ -12,34 +12,85 @@ from lasagne.init import GlorotUniform
 
 from astropy.io import fits
 
-from .patch import extract_patches, augment
+from .patch import extract_patches, augment, nanomaggie_to_luptitude
+from .params import save_params, load_params
 
+def build_cnn(input_var, num_outputs, size, num_channels=3):
 
-def build_cnn(input_var, num_outputs, num_channels=3):
-
-    network = InputLayer(shape=(None, num_channels, 17, 17), input_var=input_var)
+    network = InputLayer(shape=(None, num_channels, size, size), input_var=input_var)
 
     network = batch_norm(Conv2DLayer(
         dropout(network, p=0.1),
-        num_filters=32, filter_size=(5, 5),
+        num_filters=32, filter_size=(3, 3), pad="same",
         nonlinearity=rectify, W=GlorotUniform()
     ))
 
-    network = MaxPool2DLayer(network, pool_size=(3, 3), stride=1)
+    network = batch_norm(Conv2DLayer(
+        dropout(network, p=0.1),
+        num_filters=32, filter_size=(3, 3), pad="same",
+        nonlinearity=rectify, W=GlorotUniform()
+    ))
+
+    network = MaxPool2DLayer(network, pool_size=(2, 2))
 
     network = batch_norm(Conv2DLayer(
         dropout(network, p=0.2),
-        num_filters=64, filter_size=(5, 5),
+        num_filters=64, filter_size=(3, 3), pad="same",
         nonlinearity=rectify
     ))
 
-    network = MaxPool2DLayer(network, pool_size=(3, 3), stride=1)
+    network = batch_norm(Conv2DLayer(
+        dropout(network, p=0.2),
+        num_filters=64, filter_size=(3, 3), pad="same",
+        nonlinearity=rectify
+    ))
+
+    network = MaxPool2DLayer(network, pool_size=(2, 2))
 
     network = batch_norm(Conv2DLayer(
         dropout(network, p=0.3),
-        num_filters=128, filter_size=(5, 5),
+        num_filters=96, filter_size=(3, 3), pad="same",
         nonlinearity=rectify
     ))
+
+    network = batch_norm(Conv2DLayer(
+        dropout(network, p=0.3),
+        num_filters=96, filter_size=(3, 3), pad="same",
+        nonlinearity=rectify
+    ))
+
+    network = batch_norm(Conv2DLayer(
+        dropout(network, p=0.3),
+        num_filters=96, filter_size=(3, 3), pad="same",
+        nonlinearity=rectify
+    ))
+
+    network = MaxPool2DLayer(network, pool_size=(2, 2))
+
+    network = batch_norm(Conv2DLayer(
+        dropout(network, p=0.4),
+        num_filters=128, filter_size=(3, 3), pad="same",
+        nonlinearity=rectify
+    ))
+
+    network = batch_norm(Conv2DLayer(
+        dropout(network, p=0.4),
+        num_filters=128, filter_size=(3, 3), pad="same",
+        nonlinearity=rectify
+    ))
+
+    network = batch_norm(Conv2DLayer(
+        dropout(network, p=0.4),
+        num_filters=128, filter_size=(3, 3), pad="same",
+        nonlinearity=rectify
+    ))
+
+    network = MaxPool2DLayer(network, pool_size=(2, 2))
+
+    network = DenseLayer(
+        dropout(network, p=0.5),
+        num_units=256, nonlinearity=rectify
+    )
 
     network = DenseLayer(
         dropout(network, p=0.5),
@@ -73,30 +124,42 @@ def normalize(x):
     return result
 
 
-def train_cnn(filenames, num_epochs=500, num_classes=1000):
-
-    print("Loading data...")
+def load_training_set(filenames, bands, num_classes, size):
 
     image_data = []
     for f in filenames:
         image_data.append(fits.getdata(f))
     image_data = np.stack(image_data)
         
-    X_train, y_train = extract_patches(image_data, 17, num_classes)
+    X_train, y_train = extract_patches(image_data, num_classes, size)
 
-    for i in range(X_train.shape[1]):
-        X_train[:, i, :, :] = normalize(X_train[:, i, :, :])
+    for idx, band in enumerate(bands):
+        X = nanomaggie_to_luptitude(X_train[:, idx, :, :], band)
+        X_train[:, idx, :, :] = normalize(X)
 
-    print("shape: {}, min: {}, max: {}".format(X_train.shape, X_train.min(), X_train.max()))
+    return X_train, y_train
+
+
+def train_cnn(filenames, num_epochs=500, num_classes=1000, size=32, bands=None, pretrained=None):
+
+    print("Loading data...")
+
+    if bands is None:
+        bands = "ugriz"
+
+    X_train, y_train = load_training_set(filenames, "gri", size, num_classes)
+
+    print("Training data loaded, shape: {}, min: {}, max: {}".format(X_train.shape, X_train.min(), X_train.max()))
 
     print("Compiling...")
 
     input_var = T.tensor4('inputs')
     target_var = T.ivector('targets')
 
-    network = build_cnn(input_var, num_classes)
+    network = build_cnn(input_var, num_classes, size, len(filenames))
 
     prediction = lasagne.layers.get_output(network)
+ 
     loss = lasagne.objectives.categorical_crossentropy(prediction, target_var)
     loss = loss.mean()
 
@@ -108,23 +171,8 @@ def train_cnn(filenames, num_epochs=500, num_classes=1000):
         loss, params, learning_rate=0.01, momentum=0.9
     )
 
-    def single_output(input_var):
-        net = build_cnn(input_var, num_classes)
-        result = lasagne.layers.get_output(net)
-        return result
+    test_prediction = lasagne.layers.get_output(network, deterministic=True)
 
-    # we use scan to do multiple forward passes
-    # by using dropout and aggregating the results, we can estimate uncertainty
-    # https://arxiv.org/abs/1506.02158
-    scan_results, scan_updates = theano.scan(
-        fn=lambda inputs_var: lasagne.layers.get_output(
-            build_cnn(input_var, num_classes)
-        ),
-        n_steps=10,
-        non_sequences=[input_var]
-    )
-    test_prediction = T.mean(scan_results, axis=0)
- 
     test_loss = lasagne.objectives.categorical_crossentropy(
         test_prediction, target_var
     )
@@ -138,12 +186,14 @@ def train_cnn(filenames, num_epochs=500, num_classes=1000):
     train_fn = theano.function([input_var, target_var], loss, updates=updates)
 
     val_fn = theano.function(
-        inputs=[input_var, target_var],
-        outputs=[test_loss, test_acc],
-        updates=scan_updates
+	inputs=[input_var, target_var],
+        outputs=[test_loss, test_acc]
     )
 
     print("Starting training...")
+
+    if pretrained:
+        load_params(network, pretrained)
 
     batch_size = 128
     for epoch in range(num_epochs):
@@ -156,19 +206,23 @@ def train_cnn(filenames, num_epochs=500, num_classes=1000):
         for batch in iterate_minibatches(X_train, y_train, batch_size, shuffle=True):
             inputs, targets = batch
             inputs = augment(inputs)
-            inputs, targets = batch
             train_err += train_fn(inputs, targets)
             train_batches += 1
 
         val_err = 0
         val_acc = 0
         val_batches = 0
+        val_err_best = np.inf
+
         for batch in iterate_minibatches(X_train, y_train, batch_size, shuffle=False):
             inputs, targets = batch
             err, acc = val_fn(inputs, targets)
             val_err += err
             val_acc += acc
             val_batches += 1
+            if val_err < val_err_best:
+                val_err_best = val_err
+                save_params(network, "model.params")
 
         print("Epoch {} of {} took {:.3f}s".format(
             epoch + 1, num_epochs, time.time() - start_time))

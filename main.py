@@ -5,7 +5,7 @@ from pixelsg.train import train_cnn
 
 def main(args=None):
 
-    train_cnn(
+    network = train_cnn(
         filenames=args.files,
         num_epochs=args.num_epochs,
         num_classes=args.num_classes
@@ -32,6 +32,11 @@ if __name__ == '__main__':
     parser.add_argument(
         "--num_classes", type=int, default=1000,
         help="Number of surrogate classes (default: 1000)"
+    )
+
+    parser.add_argument(
+        "--pretrained", type=str, default=None,
+        help="File name of a pre-trained model (default: None)"
     )
 
     args = parser.parse_args()
