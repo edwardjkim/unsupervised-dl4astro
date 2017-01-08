@@ -21,76 +21,25 @@ def build_cnn(input_var, num_outputs, size, num_channels=3):
 
     network = batch_norm(Conv2DLayer(
         dropout(network, p=0.1),
-        num_filters=32, filter_size=(3, 3), pad="same",
+        num_filters=32, filter_size=(5, 5),
         nonlinearity=rectify, W=GlorotUniform()
     ))
 
-    network = batch_norm(Conv2DLayer(
-        dropout(network, p=0.1),
-        num_filters=32, filter_size=(3, 3), pad="same",
-        nonlinearity=rectify, W=GlorotUniform()
-    ))
-
-    network = MaxPool2DLayer(network, pool_size=(2, 2))
+    network = MaxPool2DLayer(network, pool_size=(3, 3), stride=1)
 
     network = batch_norm(Conv2DLayer(
         dropout(network, p=0.2),
-        num_filters=64, filter_size=(3, 3), pad="same",
+        num_filters=64, filter_size=(5, 5),
         nonlinearity=rectify
     ))
 
-    network = batch_norm(Conv2DLayer(
-        dropout(network, p=0.2),
-        num_filters=64, filter_size=(3, 3), pad="same",
-        nonlinearity=rectify
-    ))
-
-    network = MaxPool2DLayer(network, pool_size=(2, 2))
+    network = MaxPool2DLayer(network, pool_size=(3, 3), stride=1)
 
     network = batch_norm(Conv2DLayer(
         dropout(network, p=0.3),
-        num_filters=96, filter_size=(3, 3), pad="same",
+        num_filters=128, filter_size=(5, 5),
         nonlinearity=rectify
     ))
-
-    network = batch_norm(Conv2DLayer(
-        dropout(network, p=0.3),
-        num_filters=96, filter_size=(3, 3), pad="same",
-        nonlinearity=rectify
-    ))
-
-    network = batch_norm(Conv2DLayer(
-        dropout(network, p=0.3),
-        num_filters=96, filter_size=(3, 3), pad="same",
-        nonlinearity=rectify
-    ))
-
-    network = MaxPool2DLayer(network, pool_size=(2, 2))
-
-    network = batch_norm(Conv2DLayer(
-        dropout(network, p=0.4),
-        num_filters=128, filter_size=(3, 3), pad="same",
-        nonlinearity=rectify
-    ))
-
-    network = batch_norm(Conv2DLayer(
-        dropout(network, p=0.4),
-        num_filters=128, filter_size=(3, 3), pad="same",
-        nonlinearity=rectify
-    ))
-
-    network = batch_norm(Conv2DLayer(
-        dropout(network, p=0.4),
-        num_filters=128, filter_size=(3, 3), pad="same",
-        nonlinearity=rectify
-    ))
-
-    network = MaxPool2DLayer(network, pool_size=(2, 2))
-
-    network = DenseLayer(
-        dropout(network, p=0.5),
-        num_units=256, nonlinearity=rectify
-    )
 
     network = DenseLayer(
         dropout(network, p=0.5),

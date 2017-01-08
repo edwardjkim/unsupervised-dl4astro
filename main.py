@@ -8,7 +8,8 @@ def main(args=None):
     network = train_cnn(
         filenames=args.files,
         num_epochs=args.num_epochs,
-        num_classes=args.num_classes
+        num_classes=args.num_classes,
+        size=args.size
     )
 
 
@@ -32,6 +33,11 @@ if __name__ == '__main__':
     parser.add_argument(
         "--num_classes", type=int, default=1000,
         help="Number of surrogate classes (default: 1000)"
+    )
+
+    parser.add_argument(
+        "--size", type=int, default=32,
+        help="Size of a patch in number of pixels (default: 32)"
     )
 
     parser.add_argument(
