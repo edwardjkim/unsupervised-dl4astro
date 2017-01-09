@@ -4,11 +4,11 @@ import theano
 import theano.tensor as T
 import lasagne
 from lasagne.layers import (
-    InputLayer, MaxPool2DLayer, Conv2DLayer, DenseLayer,
-    dropout, batch_norm
+    InputLayer, MaxPool2DLayer, Conv2DLayer, DenseLayer, DropoutLayer,
+    batch_norm
 )
 from lasagne.nonlinearities import rectify, softmax
-from lasagne.init import GlorotUniform
+from lasagne.init import HeNormal
 
 from astropy.io import fits
 
@@ -20,35 +20,25 @@ def build_cnn(input_var, num_outputs, size, num_channels=3):
     network = InputLayer(shape=(None, num_channels, size, size), input_var=input_var)
 
     network = batch_norm(Conv2DLayer(
-        dropout(network, p=0.1),
-        num_filters=32, filter_size=(5, 5),
-        nonlinearity=rectify, W=GlorotUniform()
-    ))
-
-    network = MaxPool2DLayer(network, pool_size=(3, 3), stride=1)
-
-    network = batch_norm(Conv2DLayer(
-        dropout(network, p=0.2),
+        network,
         num_filters=64, filter_size=(5, 5),
-        nonlinearity=rectify
+        nonlinearity=rectify, W=HeNormal()
     ))
-
     network = MaxPool2DLayer(network, pool_size=(3, 3), stride=1)
+    network = DropoutLayer(network, p=0.5)
 
     network = batch_norm(Conv2DLayer(
-        dropout(network, p=0.3),
+        network,
         num_filters=128, filter_size=(5, 5),
-        nonlinearity=rectify
+        nonlinearity=rectify, W=HeNormal()
     ))
+    network = MaxPool2DLayer(network, pool_size=(3, 3), stride=1)
+    network = DropoutLayer(network, p=0.5)
 
     network = DenseLayer(
-        dropout(network, p=0.5),
-        num_units=256, nonlinearity=rectify
-    )
-
-    network = DenseLayer(
-        dropout(network, p=0.5),
-        num_units=num_outputs, nonlinearity=softmax
+        network,
+        num_units=num_outputs, nonlinearity=softmax,
+        W=HeNormal()
     )
 
     return network
@@ -89,14 +79,14 @@ def load_training_set(filenames, bands, num_classes, size):
     return X_train, y_train
 
 
-def train_cnn(filenames, num_epochs=500, num_classes=1000, size=32, bands=None, pretrained=None):
+def train_cnn(filenames, num_epochs=1000, num_classes=1000, size=16, bands=None, pretrained=None):
 
     print("Loading data...")
 
     if bands is None:
         bands = "ugriz"
 
-    X_train, y_train = load_training_set(filenames, "gri", size, num_classes)
+    X_train, y_train = load_training_set(filenames, bands, size, num_classes)
 
     print("Training data loaded, shape: {}, min: {}, max: {}".format(X_train.shape, X_train.min(), X_train.max()))
 
@@ -116,8 +106,11 @@ def train_cnn(filenames, num_epochs=500, num_classes=1000, size=32, bands=None, 
         dtype=theano.config.floatX)
 
     params = lasagne.layers.get_all_params(network, trainable=True)
+
+    learning_rate = T.scalar("learning_rate")
+
     updates = lasagne.updates.nesterov_momentum(
-        loss, params, learning_rate=0.01, momentum=0.9
+        loss, params, learning_rate, 0.9
     )
 
     test_prediction = lasagne.layers.get_output(network, deterministic=True)
@@ -132,7 +125,12 @@ def train_cnn(filenames, num_epochs=500, num_classes=1000, size=32, bands=None, 
         dtype=theano.config.floatX
     )
 
-    train_fn = theano.function([input_var, target_var], loss, updates=updates)
+    train_fn = theano.function(
+        [input_var, target_var, learning_rate],
+        loss,
+        updates=updates,
+        allow_input_downcast=True
+    )
 
     val_fn = theano.function(
 	inputs=[input_var, target_var],
@@ -145,6 +143,8 @@ def train_cnn(filenames, num_epochs=500, num_classes=1000, size=32, bands=None, 
         load_params(network, pretrained)
 
     batch_size = 128
+    base_learning_rate = 0.01
+
     for epoch in range(num_epochs):
 
         train_err = 0
@@ -155,7 +155,8 @@ def train_cnn(filenames, num_epochs=500, num_classes=1000, size=32, bands=None, 
         for batch in iterate_minibatches(X_train, y_train, batch_size, shuffle=True):
             inputs, targets = batch
             inputs = augment(inputs)
-            train_err += train_fn(inputs, targets)
+            lr = base_learning_rate * np.power(1 + 0.005 * epoch, -1.0)
+            train_err += train_fn(inputs, targets, lr)
             train_batches += 1
 
         val_err = 0
