@@ -110,7 +110,7 @@ def train_cnn(filenames, num_epochs=1000, num_classes=1000, size=16, bands=None,
         load_params(network, pretrained)
 
     batch_size = 128
-    base_learning_rate = 0.01
+    base_learning_rate = 0.1
 
     for epoch in range(num_epochs):
 
@@ -122,7 +122,7 @@ def train_cnn(filenames, num_epochs=1000, num_classes=1000, size=16, bands=None,
         for batch in iterate_minibatches(X_train, y_train, batch_size, shuffle=True):
             inputs, targets = batch
             inputs = augment(inputs)
-            lr = base_learning_rate * np.power(1 + 0.005 * epoch, -1.0)
+            lr = base_learning_rate * np.power(1 + 0.0001 * epoch, -0.75)
             train_err += train_fn(inputs, targets, lr)
             train_batches += 1
 
