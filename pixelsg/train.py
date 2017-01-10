@@ -57,7 +57,12 @@ def train_cnn(filenames, num_epochs=1000, num_classes=1000, size=16, bands=None,
     if bands is None:
         bands = "ugriz"
 
-    X_train, y_train = load_training_set(filenames, bands, size, num_classes)
+    X_train, y_train = load_training_set(
+        filenames=filenames,
+        bands=bands,
+        num_classes=num_classes,
+        size=size
+    )
 
     print("Training data loaded, shape: {}, min: {}, max: {}".format(X_train.shape, X_train.min(), X_train.max()))
 
