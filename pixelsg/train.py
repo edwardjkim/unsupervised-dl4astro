@@ -37,7 +37,11 @@ def load_training_set(filenames, bands, num_classes, size):
         image_data.append(fits.getdata(f))
     image_data = np.stack(image_data)
         
-    X_train, y_train = extract_patches(image_data, num_classes, size)
+    X_train, y_train = extract_patches(
+        image_data,
+        size=size,
+        num_patches=num_classes
+    )
 
     for idx, band in enumerate(bands):
         X = nanomaggie_to_luptitude(X_train[:, idx, :, :], band)
@@ -110,7 +114,7 @@ def train_cnn(filenames, num_epochs=1000, num_classes=1000, size=16, bands=None,
         load_params(network, pretrained)
 
     batch_size = 128
-    base_learning_rate = 0.1
+    base_learning_rate = 0.01
 
     for epoch in range(num_epochs):
 
