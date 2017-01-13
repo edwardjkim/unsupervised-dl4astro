@@ -1,10 +1,11 @@
 import time
 import numpy as np
+import scipy as sp
 import theano
 import theano.tensor as T
 import lasagne
-
 from astropy.io import fits
+from sklearn import cluster
 
 from .patch import extract_patches, augment, nanomaggie_to_luptitude
 from .params import save_params, load_params
@@ -24,7 +25,7 @@ def iterate_minibatches(inputs, targets, batchsize, shuffle=False):
         yield inputs[excerpt], targets[excerpt]
 
 
-def normalize(x):
+def scale(x):
     result = x - x.mean()
     result = (x - x.min()) / (x.max() - x.min())
     return result
@@ -45,12 +46,13 @@ def load_training_set(filenames, bands, num_classes, size):
 
     for idx, band in enumerate(bands):
         X = nanomaggie_to_luptitude(X_train[:, idx, :, :], band)
-        X_train[:, idx, :, :] = normalize(X)
+        X_train[:, idx, :, :] = scale(X)
 
     return X_train, y_train
 
 
-def train_cnn(filenames, num_epochs=1000, num_classes=1000, size=16, bands=None, pretrained=None):
+def train_cnn(filenames,
+    num_epochs=1000, num_classes=1000, size=16, bands=None, pretrained=None):
 
     print("Loading data...")
 
@@ -63,8 +65,6 @@ def train_cnn(filenames, num_epochs=1000, num_classes=1000, size=16, bands=None,
         num_classes=num_classes,
         size=size
     )
-
-    print("Training data loaded, shape: {}, min: {}, max: {}".format(X_train.shape, X_train.min(), X_train.max()))
 
     print("Compiling...")
 
@@ -128,7 +128,10 @@ def train_cnn(filenames, num_epochs=1000, num_classes=1000, size=16, bands=None,
         train_batches = 0
         start_time = time.time()
 
-        for batch in iterate_minibatches(X_train, y_train, batch_size, shuffle=True):
+        batches = iterate_minibatches(
+            X_train, y_train, batch_size, shuffle=True
+        )
+        for batch in batches:
             inputs, targets = batch
             inputs = augment(inputs)
             lr = base_learning_rate * np.power(1 + 0.01 * epoch, -1.0)
@@ -140,7 +143,10 @@ def train_cnn(filenames, num_epochs=1000, num_classes=1000, size=16, bands=None,
         val_batches = 0
         val_err_best = np.inf
 
-        for batch in iterate_minibatches(X_train, y_train, batch_size, shuffle=False):
+        batches = iterate_minibatches(
+            X_train, y_train, batch_size, shuffle=False
+        )
+        for batch in batches:
             inputs, targets = batch
             err, acc = val_fn(inputs, targets)
             val_err += err
@@ -158,3 +164,108 @@ def train_cnn(filenames, num_epochs=1000, num_classes=1000, size=16, bands=None,
             val_acc / val_batches * 100))
 
     return network
+
+
+def get_layers(network, indices):
+    """
+    Helper function that returns only layers specified in indices.
+
+    Paramters
+    ---------
+    network: A Lasagne model.
+    indices: A list of ints.
+
+    Returns
+    -------
+    A list of Lasagne layers.
+    """
+
+    layers = lasagne.layers.get_all_layers(network)
+    layers = [
+        layer for idx, layer in enumerate(layers)
+        if idx in indices
+    ] 
+
+    return layers
+
+
+def get_num_feature_maps(layers):
+
+    layer_shapes = lasagne.layers.get_output_shape(layers)
+    n_feature_maps = sum(shape[1] for shape in layer_shapes)
+
+    return n_feature_maps
+
+ 
+def extract_hypercolumns(network, indices, instance, size=64):
+    """
+    """
+
+    layers = get_layers(network, indices)
+    n_feature_maps = get_num_feature_maps(layers)
+
+    input_var = T.tensor4('inputs')
+    outputs = lasagne.layers.get_output(
+        layers, inputs=input_var, deterministic=True
+    )
+    
+    get_feature_maps = theano.function([input_var], outputs)
+    all_feature_maps = get_feature_maps(instance)
+
+    # feature_maps will be a list of numpy arrays (for each layer)
+    # with each numpy array having the shape
+    # (# instance, # feature maps, size, size)
+
+    hypercolumns = np.zeros((n_feature_maps, size, size))
+
+    count = 0
+    for feature_maps in all_feature_maps:
+        for feature_map in feature_maps[0]:
+            if isinstance(feature_map, np.ndarray):
+                resized = sp.misc.imresize(
+                    feature_map,
+                    size=(size, size),
+                    interp="bilinear",
+                    mode="F"
+                )
+            else:
+                # for fully connected layers, the numpy array has shape
+                # (# features, )
+                resized = np.ones((size, size)) * feature_map
+            hypercolumns[count] = resized
+            count += 1
+
+    assert n_feature_maps == count
+
+    return hypercolumns
+
+
+def cluster_hypercolumns(inputs, network, indices,
+    num_clusters=2, memmap_file="hypercolumns.npy"):
+
+    layers = get_layers(network, indices)
+    n_feature_maps = get_num_feature_maps(layers)
+
+    n_samples, n_channels, size, n_cols = inputs.shape
+
+    assert size == n_cols
+
+    shape = (size ** 2 * n_samples, n_feature_maps)
+    if memmap_file: 
+        hc = np.memmap(memmap_file, dtype="float32", mode="w+", shape=shape)
+    else:
+        hc = np.zeros(shape)
+    
+    for i in range(n_samples):
+        current = extract_hypercolumns(
+            network, indices, inputs[i: i + 1], size
+        )
+        current = current.transpose(1, 2, 0).reshape((size ** 2, -1))
+        hc[size ** 2 * i: size ** 2 * (i + 1)] = current
+        
+    kmeans = cluster.MiniBatchKMeans(
+        n_clusters=num_clusters, compute_labels=False
+    )
+    kmeans.fit(hc)
+
+    return kmeans
