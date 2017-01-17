@@ -1,4 +1,4 @@
-FROM jupyter/scipy-notebook
+FROM jupyter/scipy-notebook:latest
 
 MAINTAINER Edward J Kim <edward.junhyung.kim@gmail.com>
 
@@ -34,7 +34,7 @@ USER $NB_USER
 RUN \
     # Python montage-wrapper
     pip3 install --upgrade pip && \
-    pip3 install montage-wrapper && \
+    pip3 install montage-wrapper tqdm && \
 
     pip3 install git+https://github.com/Theano/Theano.git#egg=Theano && \
     pip3 install https://github.com/Lasagne/Lasagne/archive/master.zip && \

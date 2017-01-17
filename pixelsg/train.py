@@ -3,6 +3,7 @@ import numpy as np
 import scipy as sp
 import theano
 import theano.tensor as T
+from tqdm import tqdm
 import lasagne
 from astropy.io import fits
 from sklearn import cluster
@@ -240,7 +241,7 @@ def extract_hypercolumns(network, indices, instance, size=64):
     return hypercolumns
 
 
-def cluster_hypercolumns(inputs, network, indices,
+def aggregate_hypercolumns(inputs, network, indices,
     num_clusters=2, memmap_file="hypercolumns.npy"):
 
     layers = get_layers(network, indices)
@@ -250,19 +251,29 @@ def cluster_hypercolumns(inputs, network, indices,
 
     assert size == n_cols
 
+    # we have n_feature_maps > 1,000 (if we use all conv layers)
+    # for EACH pixel of every image, so we will use memmap
+    # to avoid memory problems.
+
     shape = (size ** 2 * n_samples, n_feature_maps)
-    if memmap_file: 
-        hc = np.memmap(memmap_file, dtype="float32", mode="w+", shape=shape)
-    else:
-        hc = np.zeros(shape)
+    # ideally, we want to use np.float32, but sklearn 0.17.1 exepcts float64
+    # so we use float64 for now. Consider changing to single precision later.
+    # See https://github.com/scikit-learn/scikit-learn/issues/5174 for a
+    # similar issue in IncrementalPCA.
+    hc = np.memmap(memmap_file, dtype=np.float64, mode="w+", shape=shape)
     
-    for i in range(n_samples):
+    for i in tqdm(range(n_samples)):
         current = extract_hypercolumns(
             network, indices, inputs[i: i + 1], size
         )
         current = current.transpose(1, 2, 0).reshape((size ** 2, -1))
         hc[size ** 2 * i: size ** 2 * (i + 1)] = current
-        
+
+    return hc
+
+
+def cluster_hypercolumns(hypercolumns, num_clusters=2):
+ 
     kmeans = cluster.MiniBatchKMeans(
         n_clusters=num_clusters, compute_labels=False
     )
