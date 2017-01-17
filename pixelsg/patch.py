@@ -4,7 +4,12 @@ from scipy.ndimage import gaussian_gradient_magnitude
 from sklearn.decomposition import PCA
 
 
-def squares_of_gradient(array, size, sigma=1.0):
+def rms(x):
+
+    return np.sqrt(np.mean(np.square(x)))
+
+
+def rms_of_gradient(array, size, sigma=1.0):
     """
     """
 
@@ -19,7 +24,7 @@ def squares_of_gradient(array, size, sigma=1.0):
     
     for i in range(up, down):
         for j in range(left, right):
-            result[i, j] = np.sum(np.square(gradients[i: i + size, j: j + size]))
+            result[i, j] = rms(gradients[i: i + size, j: j + size])
 
     return result
 
@@ -109,7 +114,7 @@ def extract_patches(array, size, num_patches, sigma=1.0, reference=None):
 
     X = np.zeros((num_patches, nchannels, size, size))
 
-    sog = squares_of_gradient(array[reference], size, sigma=sigma)
+    sog = rms_of_gradient(array[reference], size, sigma=sigma)
 
     sog = sog / np.sum(sog)
 
